@@ -1,0 +1,231 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# BAN 502: Mod 5, Assignment 1  
+
+### Deanna Tirrell  
+
+
+
+**Load the Libraries**  
+
+
+```{r}
+library(tidyverse)
+library(caret)
+library(nnet)
+```
+
+
+**Load and Examine the Data**  
+
+
+```{r}
+parole <- read_csv("parole.csv")
+str(parole)
+summary(parole)
+```
+
+
+**Convert Data**  
+
+
+```{r}
+parole = parole %>%
+ mutate(male = as_factor(as.character(male))) %>%
+ mutate(male = fct_recode(male, "Male" = "1", "Female" = "0"))
+
+parole = parole %>%
+ mutate(race = as_factor(as.character(race))) %>%
+ mutate(race = fct_recode(race, "White" = "1", "Other Race" = "2"))  
+
+parole = parole %>%
+ mutate(state = as_factor(as.character(state))) %>%
+ mutate(state = fct_recode(state, "Other State" = "1", "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4"))  
+
+parole = parole %>%
+ mutate(multiple.offenses = as_factor(as.character(multiple.offenses))) %>%
+ mutate(multiple.offenses = fct_recode(multiple.offenses, "Yes" = "1", "No" = "0")) 
+
+parole = parole %>%
+ mutate(crime = as_factor(as.character(crime))) %>%
+ mutate(crime = fct_recode(crime, "Larceny" = "2", "Drug-related" = "3", "Driving-related" = "4", "Other Crime" = "1")) 
+
+parole = parole %>%
+ mutate(violator = as_factor(as.character(violator))) %>%
+ mutate(violator = fct_recode(violator, "Yes" = "1", "No" = "0")) 
+str(parole)
+summary(parole)
+```
+
+
+## Task 1: Split the Data (Train/Test)  
+
+
+
+```{r}
+set.seed(12345)
+train.rows = createDataPartition(y = parole$violator, p=0.7, list = FALSE)
+train = parole[train.rows,] 
+test = parole[-train.rows,]
+summary(train)
+```
+
+
+## Task 2: Create a Neural Network  
+
+
+
+```{r}
+fitControl = trainControl(method = "cv", 
+                           number = 10)
+
+nnetGrid <-  expand.grid(size = 12, decay = 0.1)
+
+set.seed(1234)
+nnetBasic = train(violator ~ ., 
+                 train,
+                 method = "nnet",
+                 tuneGrid = nnetGrid,
+                 trControl = fitControl,
+                 verbose = FALSE,
+                 trace = FALSE)
+nnetBasic
+
+```
+
+
+## Task 3: Prediction on Train Using Neural Network Model  
+
+
+
+```{r}
+predNetBasic = predict(nnetBasic, train)
+```
+
+**Confusion Matrix**  
+
+**Model Quality**  
+Accuracy at .9577    
+Accuracy better than no info - naive rate at .8837  
+Pvalue is significant   
+Sensitiviy at .70909  
+
+
+```{r}
+confusionMatrix(predNetBasic, train$violator, positive = "Yes")
+```
+
+
+## Task 4: Adding Parameters to Neural Network  
+
+
+
+```{r}
+fitControl = trainControl(method = "cv", 
+                           number = 10)
+
+nnetGrid =  expand.grid(size = seq(from = 2, to = 12, by = 1),
+                        decay = seq(from = 0.1, to = 0.5, by = 0.1))
+set.seed(1234)
+nnetFit = train(violator ~ ., 
+                 train,
+                 method = "nnet",
+                 trControl = fitControl,
+                 tuneGrid = nnetGrid,
+                 verbose = FALSE,
+                 trace = FALSE)
+nnetFit
+```
+
+
+## Task 5: Neural Network with Parameter Predictions on Train  
+
+
+
+```{r}
+predNet = predict(nnetFit, train)
+```
+
+**Confusion Matrix**  
+
+**Model Quality**  
+Accuracy at .9091  
+Better than the no information - naive rate at .8837  
+pvalue higher but still significant on this model at .0459665  
+Sensitivity ar .40  
+
+This model performs slightly less accurately than the model without parameters.  
+
+
+```{r}
+confusionMatrix(predNet, train$violator, positive = "Yes")
+```
+
+
+## Task 6: Predictions on Test with Neural Network Model  
+
+**Predictions**  
+
+
+```{r}
+predNetBasic2 = predict(nnetBasic, test)
+```
+
+**Confusion Matrix**  
+
+**Model Quality**  
+Accuracy at .8911    
+Accuracy better than no info - naive rate at .8861  
+Pvalue is significant at .46721    
+Sensitiviy decreased to .26087 
+
+
+```{r}
+confusionMatrix(predNetBasic2, test$violator, positive = "Yes")
+```
+
+
+## Task 7: Predictions using Neural Network with Parameters  
+
+
+
+```{r}
+predNet2 = predict(nnetFit, test)
+```
+
+**Confusion Matrix**  
+
+**Model Quality**  
+Accuracy at .8861   
+Same as the no information - naive rate at .8861  
+pvalue higher and now not significant on this model at .0555251  
+Sensitivity drops to .10739  
+
+This model performs slightly less accurately than the model without parameters on the test data.  
+
+```{r}
+confusionMatrix(predNet2, test$violator, positive = "Yes")
+```
+
+
+## Task 8: Question of Overfitting?  
+
+I read a simple explanation on overfitting that stated that "overfitting occurs when your train accuracy keeps improving while your validation stops improving." (datascience.stackexchange.com/questions/19124/how-to-know-the-model-has-started-overfitting, respondent Juan Antonio Gomez Moriano) With this in mind, here is what I see:  
+
+**nn Model**  
+As built: Accuracy .87  
+Predictions on train: Accuracy .95  
+Predictions on test: Accuracy .89  
+Naive: .8861  
+
+**nnModel w/parm**  
+As built: Accuracy .89  
+Predictions on train: Accuracy .90  
+Predictions on test: Accuracy .8861  
+Naive: .8861  
+
+Both models increase accuracy on the training data, however, in the model w/parameters we increase the accuracy on the train, but not on the test. The test is no better than the naive model which means we don't gain anything from putting that model into place. I think that the model w/parameters is overfitting: our train data has improved but our test data is not improving at this point.  
+

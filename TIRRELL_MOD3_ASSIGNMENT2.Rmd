@@ -1,0 +1,384 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# BAN 502: Mod3 Assignment 2  
+### Deanna Tirrell  
+
+
+## Load libraries  
+
+
+```{r}
+library(tidyverse)
+library(MASS) 
+library(caret) 
+library(ROCR) 
+```
+
+
+## Load and examine data  
+
+
+```{r}
+parole = read_csv("parole.csv")
+str(parole)
+summary(parole)
+```
+
+
+## Mutate data and recode  
+
+
+```{r}
+parole = parole %>%
+ mutate(male = as_factor(as.character(male))) %>%
+ mutate(male = fct_recode(male, "Male" = "1", "Female" = "0"))
+
+parole = parole %>%
+ mutate(race = as_factor(as.character(race))) %>%
+ mutate(race = fct_recode(race, "White" = "1", "Other Race" = "2"))  
+
+parole = parole %>%
+ mutate(state = as_factor(as.character(state))) %>%
+ mutate(state = fct_recode(state, "Other State" = "1", "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4"))  
+
+parole = parole %>%
+ mutate(multiple.offenses = as_factor(as.character(multiple.offenses))) %>%
+ mutate(multiple.offenses = fct_recode(multiple.offenses, "Yes" = "1", "No" = "0")) 
+
+parole = parole %>%
+ mutate(crime = as_factor(as.character(crime))) %>%
+ mutate(crime = fct_recode(crime, "Larceny" = "2", "Drug-related" = "3", "Driving-related" = "4", "Other Crime" = "1")) 
+
+parole = parole %>%
+ mutate(violator = as_factor(as.character(violator))) %>%
+ mutate(violator = fct_recode(violator, "Yes" = "1", "No" = "0")) 
+str(parole)
+summary(parole)
+
+```
+
+
+## Task 1: Split the Data into Train and Test Sets  
+
+
+```{r}
+set.seed(12345)
+train.rows = createDataPartition(y = parole$violator, p=0.7, list = FALSE) #70% in training
+train = parole[train.rows,] 
+test = parole[-train.rows,]
+summary(train)
+
+```
+
+
+## Task 2: Examine Dataset  
+Objective: predict whether or not a parolee will violate parole.  
+
+
+**Sex and Violation**  
+Males slightly more likely to be a violator of parole.  
+
+
+```{r}
+ggplot(train, aes(x=male, fill=violator)) +
+  geom_bar()
+table1 = table(train$violator, train$male)
+prop.table(table1, margin = 2)
+
+```
+
+
+**Race and Violation**  
+Other race shows higher violation.  
+
+
+```{r}
+ggplot(train, aes(x=race, fill=violator)) +
+  geom_bar()
+table2 = table(train$violator, train$race)
+prop.table(table2, margin = 2)
+```
+
+
+**Incarceration State and Violation**  
+Louisiana much higher  
+
+
+```{r}
+ggplot(train, aes(x=state, fill=violator)) +
+  geom_bar()
+table3 = table(train$violator, train$state)
+prop.table(table3, margin = 2)
+```
+
+
+**Multiple Offenses and Violation**   
+those with multiple offenses have higher violations of parole  
+
+
+```{r}
+ggplot(train, aes(x=multiple.offenses, fill=violator)) +
+  geom_bar()
+table4 = table(train$violator, train$multiple.offenses)
+prop.table(table4, margin = 2)
+```
+
+
+**Crime and Violation**  
+Crime, other than driving offenses, seem to have impact on violations of parole.  
+
+
+```{r}
+ggplot(train, aes(x=crime, fill=violator)) +
+  geom_bar()
+table5 = table(train$violator, train$crime)
+prop.table(table5, margin = 2)
+```
+
+
+**Age and Violation**  
+Higher Age has slight impact on violations of parole.  
+
+
+```{r}
+ggplot(train,aes(x=violator,y=age)) + 
+  geom_boxplot()
+
+```
+
+
+**Time served and Violation**  
+time served doesn't apear to have that big of an impact on violation of parole.  
+
+
+```{r}
+ggplot(train,aes(x=violator,y=time.served)) + 
+  geom_boxplot()
+
+```
+
+
+**Max Sentence and Violation**  
+lower the max sentence, the more violation of parole.  
+
+
+```{r}
+ggplot(train,aes(x=violator,y=max.sentence)) + 
+  geom_boxplot()
+
+```
+
+
+## Task 3: Create Logistic Model
+
+
+**Incarceration State and Violation Model**  
+ACI 272.58  
+p value significant for all except Kentucky  
+state (where you are in prison) impacts violation of parole  
+
+
+```{r}
+model1 = glm(violator ~ state, train, family = "binomial")
+summary(model1)
+
+```
+
+
+## Task 4: Backward and Forward Models, Selecitng Best Model  
+
+All model and empty model set up  
+
+
+```{r}
+allmod = glm(violator ~., train, family = "binomial") 
+summary(allmod)  
+  
+emptymod = glm(violator ~1, train, family = "binomial")  
+summary(emptymod)
+
+```
+
+**Backward Model**  
+
+Best Model select race, age, state, max.sentence, and multiple.offenses  
+AIC is 252.28  
+A couple of p values are not significant  
+As we saw in the evaluation of the data, other race, incarceration in Louisiana, and those with multiple offenses increase probability of parole violation. Model seems logical.  
+
+
+```{r}
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) 
+summary(backmod)
+
+```
+
+**Forward Model**  
+
+Same as the Backward Model.  
+Best Model selects race, age, state, max.sentence, and multiple.offenses  
+AIC is 252.28  
+A couple of p values are not significant  
+As we saw in the evaluation of the data, other race, incarceration in Louisiana, and those with multiple offenses increase probability of parole violation. Model seems logical. 
+
+```{r}
+forwardmod = stepAIC(emptymod, direction = "forward", scope=list(upper=allmod,lower=emptymod), trace = TRUE) 
+summary(forwardmod)
+
+```
+
+
+## Task 5: Logistic Regression Model 2  
+
+AIC is 252.42 (slightly higher than back/forward models)  
+Virginia, and Other States are significant, as well as those with multiple offenses and other race.  
+Interesting that Louisiana comes in without a significant p value as a predictor of parole violation in this model. We can see that violation goes up with the positive coefficient on Louisiana.  
+
+
+```{r}
+model2 = glm(violator ~ state + multiple.offenses + race, train, family = "binomial")
+summary(model2)
+```
+
+
+## Task 6: Predicting Parole Violation  
+
+Parolee 1: 40.1% chance of violating parole  
+Parolee 2: 11.5% chance of violating parole  
+
+```{r predict parolee1}
+newdata = data.frame(state = "Louisiana", multiple.offenses = "Yes", race = "White")
+predict(model2, newdata, type="response")
+
+```
+
+```{r prdict parolee 2}
+newdata = data.frame(state = "Kentucky", multiple.offenses = "No", race = "Other Race")
+predict(model2, newdata, type="response")
+```
+
+## Task 7:  Develop ROC Curve and Probability Thresholds  
+
+**Prediction set up**  
+
+
+```{r}
+predictions = predict(backmod, type="response") #develop predicted probabilities
+head(predictions)
+
+```
+
+**ROC Curve**  
+
+
+```{r}
+ROCRpred = prediction(predictions, train$violator) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+
+```
+
+**AUC Value**  
+
+
+```{r}
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+## Task 8: Accuracy, Sensitivity, and Specificity  
+
+**What are the implications of incorrectly classifying a parolee?**  
+Not sensitive enough model will result in classifying more parolees as non-violators and could potentially put dangerous individuals on the street if paroled. Whereas highly sensitive model could withhold more people from parole and misclassify them as someone who would violate parole.  
+ 
+
+```{r}
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+
+```
+
+## Task 9: Identify a Probability Threshold  
+
+**Balanced Threshold**  
+.8414 accuracy  
+
+
+```{r}
+t1 = table(train$violator,predictions > 0.1455707)
+t1
+
+```
+
+```{r}
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+**.2 Threshold**  
+.8647 accuracy  
+
+```{r}
+t1 = table(train$violator,predictions > 0.2)
+t1
+
+```
+
+```{r}
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+**.4 Threshold**  
+.9027 accuracy  
+This is the threshold I feel is good for this model.  
+
+```{r}
+t1 = table(train$violator,predictions > 0.4)
+t1
+```
+
+```{r}
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+**All non-violators**  
+.8837 accuracy  
+
+```{r}
+t1 = table(train$violator,predictions > 1)
+t1
+```
+
+```{r}
+(t1[1])/nrow(train)
+
+```
+
+## Task 10: Testing Dataset  
+
+Using Backmod as the model and .4 as the threshold, the model stands close to the training model at .8911 accuracy which suggests that the model will hold to new data that comes in.  
+
+
+```{r}
+pred2 = predict(backmod, newdata = test, type="response") #develop predicted probabilities
+head(pred2)
+```
+
+```{r}
+t2 = table(test$violator,pred2 > .4)
+t2
+```
+
+```{r}
+(t2[1,1]+t2[2,2])/nrow(test)
+```
+
